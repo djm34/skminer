@@ -63,7 +63,7 @@ namespace Core
 				{					
 					
 					uint1024 hash;
-					unsigned long long hashes=0;
+					uint64_t hashes=0;
 					unsigned int * TheData =(unsigned int*) m_pBLOCK->GetData();
 					uint1024 TheTarget = target.getuint1024();
 					uint64_t Nonce; //= m_pBLOCK->GetNonce();
