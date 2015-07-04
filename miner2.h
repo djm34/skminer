@@ -13,11 +13,8 @@ extern "C" {
 
 #include <stdbool.h>
 #include <inttypes.h>
-//#include <sys/time.h>
 
-
-extern bool scanhash_sk1024(unsigned int thr_id, uint32_t* TheData, uint1024 TheTarget, uint64_t &TheNonce, unsigned long long max_nonce, unsigned long long *hashes_done);
-
+extern bool scanhash_sk1024(unsigned int thr_id, unsigned int* TheData, uint1024 TheTarget, uint64_t &TheNonce, uint64_t max_nonce, uint64_t  *hashes_done);
 /*
 #ifdef __cplusplus
 }

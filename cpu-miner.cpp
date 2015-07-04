@@ -293,6 +293,7 @@ namespace Core
 #ifdef WIN32
 
 #include <windows.h>
+#include <signal.h>
 #else
 #include <errno.h>
 #include <signal.h>
@@ -338,31 +339,6 @@ int tp_coef[8];
 
 
 
-
-
-
-
-
-
-
-#ifndef WIN32
-static void signal_handler(int sig)
-{
-	switch (sig) {
-	case SIGHUP:
-		applog(LOG_INFO, "SIGHUP received");
-		break;
-	case SIGINT:
-		applog(LOG_INFO, "SIGINT received, exiting");
-		exit(0);
-		break;
-	case SIGTERM:
-		applog(LOG_INFO, "SIGTERM received, exiting");
-		exit(0);
-		break;
-	}
-}
-#endif
 
 #define PROGRAM_VERSION "v0.3"
 int main(int argc, char *argv[])

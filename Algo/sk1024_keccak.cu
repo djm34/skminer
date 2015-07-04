@@ -9,18 +9,13 @@
 #include <memory.h>
 
 
-//extern cudaError_t MyStreamSynchronize(cudaStream_t stream, int situation, int thr_id);
-extern int device_major[8];
-extern int device_minor[8];
-
 __constant__ uint64_t pTarget[16];
 #include "cuda_helper.h"
-
+uint64_t *d_sknounce[8];
 uint64_t *d_SKNonce[8];
 
-#define ROL64(x, n)        (((x) << (n)) | ((x) >> (64 - (n))))
-
-static __constant__ uint64_t RC[24] = {
+static __constant__ uint64_t RC[24];
+static const uint64_t cpu_RC[24] = {
     0x0000000000000001ull, 0x0000000000008082ull,
     0x800000000000808aull, 0x8000000080008000ull,
     0x000000000000808bull, 0x0000000080000001ull,
@@ -36,386 +31,301 @@ static __constant__ uint64_t RC[24] = {
 };
 
 
-static __device__ __forceinline__ void keccak_block(uint2  *s, const uint64_t *keccak_round_constants) {
-	size_t i;
-	uint2 v, w;
-	uint2 t[5];
-    uint2 u[5];
-//    #pragma unroll
-	for (i = 0; i < 24; i++) {
-		/* theta: c = a[0,i] ^ a[1,i] ^ .. a[4,i] */
-//		t[0] = s[0] ^ s[5] ^ s[10] ^ s[15] ^ s[20];
-//		t[1] = s[1] ^ s[6] ^ s[11] ^ s[16] ^ s[21];
-//		t[2] = s[2] ^ s[7] ^ s[12] ^ s[17] ^ s[22];
-//		t[3] = s[3] ^ s[8] ^ s[13] ^ s[18] ^ s[23];
-//		t[4] = s[4] ^ s[9] ^ s[14] ^ s[19] ^ s[24];
-				t[0] = s[0] ^ s[5]; 
-				t[1] = s[1] ^ s[6]; 
-				t[2] = s[2] ^ s[7]; 
-				t[3] = s[3] ^ s[8];
-				t[4] = s[4] ^ s[9]; 
-				t[0] ^= s[10]; 
-				t[1] ^= s[11]; 
-				t[2] ^= s[12]; 
-				t[3] ^= s[13]; 
-				t[4] ^= s[14]; 
-				t[0] ^= s[15];
-				t[1] ^= s[16];
-				t[2] ^= s[17];
-				t[3] ^= s[18];
-				t[4] ^= s[19];
-				t[0] ^= s[20];
-				t[1] ^= s[21];
-				t[2] ^= s[22];
-				t[3] ^= s[23];
-				t[4] ^= s[24];
-		/* theta: d[i] = c[i+4] ^ rotl(c[i+1],1) */
-		u[0] = t[4] ^ ROL2(t[1], 1);
-		u[1] = t[0] ^ ROL2(t[2], 1);
-		u[2] = t[1] ^ ROL2(t[3], 1);
-		u[3] = t[2] ^ ROL2(t[4], 1);
-		u[4] = t[3] ^ ROL2(t[0], 1);
 
-		/* theta: a[0,i], a[1,i], .. a[4,i] ^= d[i] */
+static __device__ __forceinline__ void keccak_1600(uint64_t *state, const uint64_t *keccak_round_constants)
+{
 
-		s[0] ^= u[0]; s[5] ^= u[0]; s[10] ^= u[0]; s[15] ^= u[0]; s[20] ^= u[0];
-		s[1] ^= u[1]; s[6] ^= u[1]; s[11] ^= u[1]; s[16] ^= u[1]; s[21] ^= u[1];
-		s[2] ^= u[2]; s[7] ^= u[2]; s[12] ^= u[2]; s[17] ^= u[2]; s[22] ^= u[2];
-		s[3] ^= u[3]; s[8] ^= u[3]; s[13] ^= u[3]; s[18] ^= u[3]; s[23] ^= u[3];
-		s[4] ^= u[4]; s[9] ^= u[4]; s[14] ^= u[4]; s[19] ^= u[4]; s[24] ^= u[4];
+	uint2 Aba, Abe, Abi, Abo, Abu;
+	uint2 Aga, Age, Agi, Ago, Agu;
+	uint2 Aka, Ake, Aki, Ako, Aku;
+	uint2 Ama, Ame, Ami, Amo, Amu;
+	uint2 Asa, Ase, Asi, Aso, Asu;
+	uint2 BCa, BCe, BCi, BCo, BCu;
+	uint2 Da, De, Di, Do, Du;
+	uint2 Eba, Ebe, Ebi, Ebo, Ebu;
+	uint2 Ega, Ege, Egi, Ego, Egu;
+	uint2 Eka, Eke, Eki, Eko, Eku;
+	uint2 Ema, Eme, Emi, Emo, Emu;
+	uint2 Esa, Ese, Esi, Eso, Esu;
+	Aba = vectorize(state[0]);
+	Abe = vectorize(state[1]);
+	Abi = vectorize(state[2]);
+	Abo = vectorize(state[3]);
+	Abu = vectorize(state[4]);
+	Aga = vectorize(state[5]);
+	Age = vectorize(state[6]);
+	Agi = vectorize(state[7]);
+	Ago = vectorize(state[8]);
+	Agu = vectorize(state[9]);
+	Aka = vectorize(state[10]);
+	Ake = vectorize(state[11]);
+	Aki = vectorize(state[12]);
+	Ako = vectorize(state[13]);
+	Aku = vectorize(state[14]);
+	Ama = vectorize(state[15]);
+	Ame = vectorize(state[16]);
+	Ami = vectorize(state[17]);
+	Amo = vectorize(state[18]);
+	Amu = vectorize(state[19]);
+	Asa = vectorize(state[20]);
+	Ase = vectorize(state[21]);
+	Asi = vectorize(state[22]);
+	Aso = vectorize(state[23]);
+	Asu = vectorize(state[24]);
+//    #pragma unroll 
+	for (int round = 0; round < 24; round += 2)
+	{
+		//    int round =2;
+		//    prepareTheta
+		BCa = Aba^Aga^Aka^Ama^Asa;
+		BCe = Abe^Age^Ake^Ame^Ase;
+		BCi = Abi^Agi^Aki^Ami^Asi;
+		BCo = Abo^Ago^Ako^Amo^Aso;
+		BCu = Abu^Agu^Aku^Amu^Asu;
 
-		
-		/* rho pi: b[..] = rotl(a[..], ..) */
-		v = s[1];
-		s[1] = ROL2(s[6], 44);
-		s[6] = ROL2(s[9], 20);
-		s[9] = ROL2(s[22], 61);
-		s[22] = ROL2(s[14], 39);
-		s[14] = ROL2(s[20], 18);
-		s[20] = ROL2(s[2], 62);
-		s[2] = ROL2(s[12], 43);
-		s[12] = ROL2(s[13], 25);
-		s[13] = ROL2(s[19], 8);
-		s[19] = ROL2(s[23], 56);
-		s[23] = ROL2(s[15], 41);
-		s[15] = ROL2(s[4], 27);
-		s[4] = ROL2(s[24], 14);
-		s[24] = ROL2(s[21], 2);
-		s[21] = ROL2(s[8], 55);
-		s[8] = ROL2(s[16], 45);
-		s[16] = ROL2(s[5], 36);
-		s[5] = ROL2(s[3], 28);
-		s[3] = ROL2(s[18], 21);
-		s[18] = ROL2(s[17], 15);
-		s[17] = ROL2(s[11], 10);
-		s[11] = ROL2(s[7], 6);
-		s[7] = ROL2(s[10], 3);
-		s[10] = ROL2(v, 1);
+		//thetaRhoPiChiIotaPrepareTheta(round  , A, E)
+		Da = BCu^ROL2(BCe, 1);
+		De = BCa^ROL2(BCi, 1);
+		Di = BCe^ROL2(BCo, 1);
+		Do = BCi^ROL2(BCu, 1);
+		Du = BCo^ROL2(BCa, 1);
 
-		/* chi: a[i,j] ^= ~b[i,j+1] & b[i,j+2] */
+		Aba ^= Da;
+		BCa = Aba;
+		Age ^= De;
+		BCe = ROL2(Age, 44);
+		Aki ^= Di;
+		BCi = ROL2(Aki, 43);
+		Amo ^= Do;
+		BCo = ROL2(Amo, 21);
+		Asu ^= Du;
+		BCu = ROL2(Asu, 14);
+		Eba = BCa ^ ((~BCe)&  BCi);
+		Eba ^= vectorize(keccak_round_constants[round]);
+		Ebe = BCe ^ ((~BCi)&  BCo);
+		Ebi = BCi ^ ((~BCo)&  BCu);
+		Ebo = BCo ^ ((~BCu)&  BCa);
+		Ebu = BCu ^ ((~BCa)&  BCe);
 
-		v = s[0]; w = s[1]; s[0] ^= (~w) & s[2]; s[1] ^= (~s[2]) & s[3]; s[2] ^= (~s[3]) & s[4]; s[3] ^= (~s[4]) & v; s[4] ^= (~v) & w;
-		v = s[5]; w = s[6]; s[5] ^= (~w) & s[7]; s[6] ^= (~s[7]) & s[8]; s[7] ^= (~s[8]) & s[9]; s[8] ^= (~s[9]) & v; s[9] ^= (~v) & w;
-		v = s[10]; w = s[11]; s[10] ^= (~w) & s[12]; s[11] ^= (~s[12]) & s[13]; s[12] ^= (~s[13]) & s[14]; s[13] ^= (~s[14]) & v; s[14] ^= (~v) & w;
-		v = s[15]; w = s[16]; s[15] ^= (~w) & s[17]; s[16] ^= (~s[17]) & s[18]; s[17] ^= (~s[18]) & s[19]; s[18] ^= (~s[19]) & v; s[19] ^= (~v) & w;
-		v = s[20]; w = s[21]; s[20] ^= (~w) & s[22]; s[21] ^= (~s[22]) & s[23]; s[22] ^= (~s[23]) & s[24]; s[23] ^= (~s[24]) & v; s[24] ^= (~v) & w;
+		Abo ^= Do;
+		BCa = ROL2(Abo, 28);
+		Agu ^= Du;
+		BCe = ROL2(Agu, 20);
+		Aka ^= Da;
+		BCi = ROL2(Aka, 3);
+		Ame ^= De;
+		BCo = ROL2(Ame, 45);
+		Asi ^= Di;
+		BCu = ROL2(Asi, 61);
+		Ega = BCa ^ ((~BCe)&  BCi);
+		Ege = BCe ^ ((~BCi)&  BCo);
+		Egi = BCi ^ ((~BCo)&  BCu);
+		Ego = BCo ^ ((~BCu)&  BCa);
+		Egu = BCu ^ ((~BCa)&  BCe);
 
-		/* iota: a[0,0] ^= round constant */
-		s[0] ^= vectorize(keccak_round_constants[i]);
-	}
-} 
+		Abe ^= De;
+		BCa = ROL2(Abe, 1);
+		Agi ^= Di;
+		BCe = ROL2(Agi, 6);
+		Ako ^= Do;
+		BCi = ROL2(Ako, 25);
+		Amu ^= Du;
+		BCo = ROL2(Amu, 8);
+		Asa ^= Da;
+		BCu = ROL2(Asa, 18);
+		Eka = BCa ^ ((~BCe)&  BCi);
+		Eke = BCe ^ ((~BCi)&  BCo);
+		Eki = BCi ^ ((~BCo)&  BCu);
+		Eko = BCo ^ ((~BCu)&  BCa);
+		Eku = BCu ^ ((~BCa)&  BCe);
 
-static __device__ __forceinline__ void keccak_blocklast(uint2  *s, const uint64_t *keccak_round_constants,uint64_t &comp) {
-	size_t i;
-	uint2 v, w;
-	uint2 t[5];
-	uint2 u[5];
-	//    #pragma unroll
-	for (i = 0; i < 24; i++) {
-		/* theta: c = a[0,i] ^ a[1,i] ^ .. a[4,i] */
-		//		t[0] = s[0] ^ s[5] ^ s[10] ^ s[15] ^ s[20];
-		//		t[1] = s[1] ^ s[6] ^ s[11] ^ s[16] ^ s[21];
-		//		t[2] = s[2] ^ s[7] ^ s[12] ^ s[17] ^ s[22];
-		//		t[3] = s[3] ^ s[8] ^ s[13] ^ s[18] ^ s[23];
-		//		t[4] = s[4] ^ s[9] ^ s[14] ^ s[19] ^ s[24];
-		t[0] = s[0] ^ s[5];
-		t[1] = s[1] ^ s[6];
-		t[2] = s[2] ^ s[7];
-		t[3] = s[3] ^ s[8];
-		t[4] = s[4] ^ s[9];
-		t[0] ^= s[10];
-		t[1] ^= s[11];
-		t[2] ^= s[12];
-		t[3] ^= s[13];
-		t[4] ^= s[14];
-		t[0] ^= s[15];
-		t[1] ^= s[16];
-		t[2] ^= s[17];
-		t[3] ^= s[18];
-		t[4] ^= s[19];
-		t[0] ^= s[20];
-		t[1] ^= s[21];
-		t[2] ^= s[22];
-		t[3] ^= s[23];
-		t[4] ^= s[24];
-		/* theta: d[i] = c[i+4] ^ rotl(c[i+1],1) */
-		u[0] = t[4] ^ ROL2(t[1], 1);
-		u[1] = t[0] ^ ROL2(t[2], 1);
-		u[2] = t[1] ^ ROL2(t[3], 1);
-		u[3] = t[2] ^ ROL2(t[4], 1);
-		u[4] = t[3] ^ ROL2(t[0], 1);
+		Abu ^= Du;
+		BCa = ROL2(Abu, 27);
+		Aga ^= Da;
+		BCe = ROL2(Aga, 36);
+		Ake ^= De;
+		BCi = ROL2(Ake, 10);
+		Ami ^= Di;
+		BCo = ROL2(Ami, 15);
+		Aso ^= Do;
+		BCu = ROL2(Aso, 56);
+		Ema = BCa ^ ((~BCe)&  BCi);
+		Eme = BCe ^ ((~BCi)&  BCo);
+		Emi = BCi ^ ((~BCo)&  BCu);
+		Emo = BCo ^ ((~BCu)&  BCa);
+		Emu = BCu ^ ((~BCa)&  BCe);
 
-		/* theta: a[0,i], a[1,i], .. a[4,i] ^= d[i] */
+		Abi ^= Di;
+		BCa = ROL2(Abi, 62);
+		Ago ^= Do;
+		BCe = ROL2(Ago, 55);
+		Aku ^= Du;
+		BCi = ROL2(Aku, 39);
+		Ama ^= Da;
+		BCo = ROL2(Ama, 41);
+		Ase ^= De;
+		BCu = ROL2(Ase, 2);
+		Esa = BCa ^ ((~BCe)&  BCi);
+		Ese = BCe ^ ((~BCi)&  BCo);
+		Esi = BCi ^ ((~BCo)&  BCu);
+		Eso = BCo ^ ((~BCu)&  BCa);
+		Esu = BCu ^ ((~BCa)&  BCe);
 
-		s[0] ^= u[0]; s[5] ^= u[0]; s[10] ^= u[0]; s[15] ^= u[0]; s[20] ^= u[0];
-		s[1] ^= u[1]; s[6] ^= u[1]; s[11] ^= u[1]; s[16] ^= u[1]; s[21] ^= u[1];
-		s[2] ^= u[2]; s[7] ^= u[2]; s[12] ^= u[2]; s[17] ^= u[2]; s[22] ^= u[2];
-		s[3] ^= u[3]; s[8] ^= u[3]; s[13] ^= u[3]; s[18] ^= u[3]; s[23] ^= u[3];
-		s[4] ^= u[4]; s[9] ^= u[4]; s[14] ^= u[4]; s[19] ^= u[4]; s[24] ^= u[4];
+		//    prepareTheta
+		BCa = Eba^Ega^Eka^Ema^Esa;
+		BCe = Ebe^Ege^Eke^Eme^Ese;
+		BCi = Ebi^Egi^Eki^Emi^Esi;
+		BCo = Ebo^Ego^Eko^Emo^Eso;
+		BCu = Ebu^Egu^Eku^Emu^Esu;
 
+		//thetaRhoPiChiIotaPrepareTheta(round+1, E, A)
+		Da = BCu^ROL2(BCe, 1);
+		De = BCa^ROL2(BCi, 1);
+		Di = BCe^ROL2(BCo, 1);
+		Do = BCi^ROL2(BCu, 1);
+		Du = BCo^ROL2(BCa, 1);
 
-		/* rho pi: b[..] = rotl(a[..], ..) */
-		v = s[1];
-		s[1] = ROL2(s[6], 44);
-		s[6] = ROL2(s[9], 20);
-		s[9] = ROL2(s[22], 61);
-		s[22] = ROL2(s[14], 39);
-		s[14] = ROL2(s[20], 18);
-		s[20] = ROL2(s[2], 62);
-		s[2] = ROL2(s[12], 43);
-		s[12] = ROL2(s[13], 25);
-		s[13] = ROL2(s[19], 8);
-		s[19] = ROL2(s[23], 56);
-		s[23] = ROL2(s[15], 41);
-		s[15] = ROL2(s[4], 27);
-		s[4] = ROL2(s[24], 14);
-		s[24] = ROL2(s[21], 2);
-		s[21] = ROL2(s[8], 55);
-		s[8] = ROL2(s[16], 45);
-		s[16] = ROL2(s[5], 36);
-		s[5] = ROL2(s[3], 28);
-		s[3] = ROL2(s[18], 21);
-		s[18] = ROL2(s[17], 15);
-		s[17] = ROL2(s[11], 10);
-		s[11] = ROL2(s[7], 6);
-		s[7] = ROL2(s[10], 3);
-		s[10] = ROL2(v, 1);
+		Eba ^= Da;
+		BCa = Eba;
+		Ege ^= De;
+		BCe = ROL2(Ege, 44);
+		Eki ^= Di;
+		BCi = ROL2(Eki, 43);
+		Emo ^= Do;
+		BCo = ROL2(Emo, 21);
+		Esu ^= Du;
+		BCu = ROL2(Esu, 14);
+		Aba = BCa ^ ((~BCe)&  BCi);
+		Aba ^= vectorize(keccak_round_constants[round + 1]);
+		Abe = BCe ^ ((~BCi)&  BCo);
+		Abi = BCi ^ ((~BCo)&  BCu);
+		Abo = BCo ^ ((~BCu)&  BCa);
+		Abu = BCu ^ ((~BCa)&  BCe);
 
-		/* chi: a[i,j] ^= ~b[i,j+1] & b[i,j+2] */
+		Ebo ^= Do;
+		BCa = ROL2(Ebo, 28);
+		Egu ^= Du;
+		BCe = ROL2(Egu, 20);
+		Eka ^= Da;
+		BCi = ROL2(Eka, 3);
+		Eme ^= De;
+		BCo = ROL2(Eme, 45);
+		Esi ^= Di;
+		BCu = ROL2(Esi, 61);
+		Aga = BCa ^ ((~BCe)&  BCi);
+		Age = BCe ^ ((~BCi)&  BCo);
+		Agi = BCi ^ ((~BCo)&  BCu);
+		Ago = BCo ^ ((~BCu)&  BCa);
+		Agu = BCu ^ ((~BCa)&  BCe);
 
-		v = s[0]; w = s[1]; s[0] ^= (~w) & s[2]; s[1] ^= (~s[2]) & s[3]; s[2] ^= (~s[3]) & s[4]; s[3] ^= (~s[4]) & v; s[4] ^= (~v) & w;
-		v = s[5]; w = s[6]; s[5] ^= (~w) & s[7]; s[6] ^= (~s[7]) & s[8]; s[7] ^= (~s[8]) & s[9]; s[8] ^= (~s[9]) & v; s[9] ^= (~v) & w;
-		v = s[10]; w = s[11]; s[10] ^= (~w) & s[12]; s[11] ^= (~s[12]) & s[13]; s[12] ^= (~s[13]) & s[14]; s[13] ^= (~s[14]) & v; s[14] ^= (~v) & w;
-		v = s[15]; w = s[16]; s[15] ^= (~w) & s[17]; s[16] ^= (~s[17]) & s[18]; s[17] ^= (~s[18]) & s[19]; s[18] ^= (~s[19]) & v; s[19] ^= (~v) & w;
-		v = s[20]; w = s[21]; s[20] ^= (~w) & s[22]; s[21] ^= (~s[22]) & s[23]; s[22] ^= (~s[23]) & s[24]; s[23] ^= (~s[24]) & v; s[24] ^= (~v) & w;
+		Ebe ^= De;
+		BCa = ROL2(Ebe, 1);
+		Egi ^= Di;
+		BCe = ROL2(Egi, 6);
+		Eko ^= Do;
+		BCi = ROL2(Eko, 25);
+		Emu ^= Du;
+		BCo = ROL2(Emu, 8);
+		Esa ^= Da;
+		BCu = ROL2(Esa, 18);
+		Aka = BCa ^ ((~BCe)&  BCi);
+		Ake = BCe ^ ((~BCi)&  BCo);
+		Aki = BCi ^ ((~BCo)&  BCu);
+		Ako = BCo ^ ((~BCu)&  BCa);
+		Aku = BCu ^ ((~BCa)&  BCe);
 
-		/* iota: a[0,0] ^= round constant */
-		s[0] ^= vectorize(keccak_round_constants[i]);
-	}
-	comp = devectorize(s[6]);
-}
+		Ebu ^= Du;
+		BCa = ROL2(Ebu, 27);
+		Ega ^= Da;
+		BCe = ROL2(Ega, 36);
+		Eke ^= De;
+		BCi = ROL2(Eke, 10);
+		Emi ^= Di;
+		BCo = ROL2(Emi, 15);
+		Eso ^= Do;
+		BCu = ROL2(Eso, 56);
+		Ama = BCa ^ ((~BCe)&  BCi);
+		Ame = BCe ^ ((~BCi)&  BCo);
+		Ami = BCi ^ ((~BCo)&  BCu);
+		Amo = BCo ^ ((~BCu)&  BCa);
+		Amu = BCu ^ ((~BCa)&  BCe);
 
-static __device__ __forceinline__ void keccak_block1st(uint2  *s, const uint64_t *keccak_round_constants) {
-	size_t i;
-	uint2 v, w;
-	uint2 t[5];
-	uint2 u[5];
-	//    #pragma unroll
-	t[0] = s[0] ^ s[5];
-	t[1] = s[1] ^ s[6];
-	t[2] = s[2] ^ s[7];
-	t[3] = s[3] ^ s[8];
-	t[4] = s[4];
-	
-	/* theta: d[i] = c[i+4] ^ rotl(c[i+1],1) */
-	u[0] = t[4] ^ ROL2(t[1], 1);
-	u[1] = t[0] ^ ROL2(t[2], 1);
-	u[2] = t[1] ^ ROL2(t[3], 1);
-	u[3] = t[2] ^ ROL2(t[4], 1);
-	u[4] = t[3] ^ ROL2(t[0], 1);
-
-	/* theta: a[0,i], a[1,i], .. a[4,i] ^= d[i] */
-
-	s[0] ^= u[0]; s[5] ^= u[0]; s[10] = u[0]; s[15] = u[0]; s[20] = u[0];
-	s[1] ^= u[1]; s[6] ^= u[1]; s[11] = u[1]; s[16] = u[1]; s[21] = u[1];
-	s[2] ^= u[2]; s[7] ^= u[2]; s[12] = u[2]; s[17] = u[2]; s[22] = u[2];
-	s[3] ^= u[3]; s[8] ^= u[3]; s[13] = u[3]; s[18] = u[3]; s[23] = u[3];
-	s[4] ^= u[4]; s[9]  = u[4]; s[14] = u[4]; s[19] = u[4]; s[24] = u[4];
-
-
-	/* rho pi: b[..] = rotl(a[..], ..) */
-	v = s[1];
-	s[1] = ROL2(s[6], 44);
-	s[6] = ROL2(s[9], 20);
-	s[9] = ROL2(s[22], 61);
-	s[22] = ROL2(s[14], 39);
-	s[14] = ROL2(s[20], 18);
-	s[20] = ROL2(s[2], 62);
-	s[2] = ROL2(s[12], 43);
-	s[12] = ROL2(s[13], 25);
-	s[13] = ROL2(s[19], 8);
-	s[19] = ROL2(s[23], 56);
-	s[23] = ROL2(s[15], 41);
-	s[15] = ROL2(s[4], 27);
-	s[4] = ROL2(s[24], 14);
-	s[24] = ROL2(s[21], 2);
-	s[21] = ROL2(s[8], 55);
-	s[8] = ROL2(s[16], 45);
-	s[16] = ROL2(s[5], 36);
-	s[5] = ROL2(s[3], 28);
-	s[3] = ROL2(s[18], 21);
-	s[18] = ROL2(s[17], 15);
-	s[17] = ROL2(s[11], 10);
-	s[11] = ROL2(s[7], 6);
-	s[7] = ROL2(s[10], 3);
-	s[10] = ROL2(v, 1);
-
-	/* chi: a[i,j] ^= ~b[i,j+1] & b[i,j+2] */
-
-	v = s[0]; w = s[1]; s[0] ^= (~w) & s[2]; s[1] ^= (~s[2]) & s[3]; s[2] ^= (~s[3]) & s[4]; s[3] ^= (~s[4]) & v; s[4] ^= (~v) & w;
-	v = s[5]; w = s[6]; s[5] ^= (~w) & s[7]; s[6] ^= (~s[7]) & s[8]; s[7] ^= (~s[8]) & s[9]; s[8] ^= (~s[9]) & v; s[9] ^= (~v) & w;
-	v = s[10]; w = s[11]; s[10] ^= (~w) & s[12]; s[11] ^= (~s[12]) & s[13]; s[12] ^= (~s[13]) & s[14]; s[13] ^= (~s[14]) & v; s[14] ^= (~v) & w;
-	v = s[15]; w = s[16]; s[15] ^= (~w) & s[17]; s[16] ^= (~s[17]) & s[18]; s[17] ^= (~s[18]) & s[19]; s[18] ^= (~s[19]) & v; s[19] ^= (~v) & w;
-	v = s[20]; w = s[21]; s[20] ^= (~w) & s[22]; s[21] ^= (~s[22]) & s[23]; s[22] ^= (~s[23]) & s[24]; s[23] ^= (~s[24]) & v; s[24] ^= (~v) & w;
-
-	/* iota: a[0,0] ^= round constant */
-	s[0] ^= vectorize(keccak_round_constants[0]);
-	for (i = 1; i < 24; i++) {
-
-		t[0] = s[0] ^ s[5];
-		t[1] = s[1] ^ s[6];
-		t[2] = s[2] ^ s[7];
-		t[3] = s[3] ^ s[8];
-		t[4] = s[4] ^ s[9];
-		t[0] ^= s[10];
-		t[1] ^= s[11];
-		t[2] ^= s[12];
-		t[3] ^= s[13];
-		t[4] ^= s[14];
-		t[0] ^= s[15];
-		t[1] ^= s[16];
-		t[2] ^= s[17];
-		t[3] ^= s[18];
-		t[4] ^= s[19];
-		t[0] ^= s[20];
-		t[1] ^= s[21];
-		t[2] ^= s[22];
-		t[3] ^= s[23];
-		t[4] ^= s[24];
-		/* theta: d[i] = c[i+4] ^ rotl(c[i+1],1) */
-		u[0] = t[4] ^ ROL2(t[1], 1);
-		u[1] = t[0] ^ ROL2(t[2], 1);
-		u[2] = t[1] ^ ROL2(t[3], 1);
-		u[3] = t[2] ^ ROL2(t[4], 1);
-		u[4] = t[3] ^ ROL2(t[0], 1);
-
-		/* theta: a[0,i], a[1,i], .. a[4,i] ^= d[i] */
-
-		s[0] ^= u[0]; s[5] ^= u[0]; s[10] ^= u[0]; s[15] ^= u[0]; s[20] ^= u[0];
-		s[1] ^= u[1]; s[6] ^= u[1]; s[11] ^= u[1]; s[16] ^= u[1]; s[21] ^= u[1];
-		s[2] ^= u[2]; s[7] ^= u[2]; s[12] ^= u[2]; s[17] ^= u[2]; s[22] ^= u[2];
-		s[3] ^= u[3]; s[8] ^= u[3]; s[13] ^= u[3]; s[18] ^= u[3]; s[23] ^= u[3];
-		s[4] ^= u[4]; s[9] ^= u[4]; s[14] ^= u[4]; s[19] ^= u[4]; s[24] ^= u[4];
-
-
-		/* rho pi: b[..] = rotl(a[..], ..) */
-		v = s[1];
-		s[1] = ROL2(s[6], 44);
-		s[6] = ROL2(s[9], 20);
-		s[9] = ROL2(s[22], 61);
-		s[22] = ROL2(s[14], 39);
-		s[14] = ROL2(s[20], 18);
-		s[20] = ROL2(s[2], 62);
-		s[2] = ROL2(s[12], 43);
-		s[12] = ROL2(s[13], 25);
-		s[13] = ROL2(s[19], 8);
-		s[19] = ROL2(s[23], 56);
-		s[23] = ROL2(s[15], 41);
-		s[15] = ROL2(s[4], 27);
-		s[4] = ROL2(s[24], 14);
-		s[24] = ROL2(s[21], 2);
-		s[21] = ROL2(s[8], 55);
-		s[8] = ROL2(s[16], 45);
-		s[16] = ROL2(s[5], 36);
-		s[5] = ROL2(s[3], 28);
-		s[3] = ROL2(s[18], 21);
-		s[18] = ROL2(s[17], 15);
-		s[17] = ROL2(s[11], 10);
-		s[11] = ROL2(s[7], 6);
-		s[7] = ROL2(s[10], 3);
-		s[10] = ROL2(v, 1);
-
-		/* chi: a[i,j] ^= ~b[i,j+1] & b[i,j+2] */
-
-		v = s[0]; w = s[1]; s[0] ^= (~w) & s[2]; s[1] ^= (~s[2]) & s[3]; s[2] ^= (~s[3]) & s[4]; s[3] ^= (~s[4]) & v; s[4] ^= (~v) & w;
-		v = s[5]; w = s[6]; s[5] ^= (~w) & s[7]; s[6] ^= (~s[7]) & s[8]; s[7] ^= (~s[8]) & s[9]; s[8] ^= (~s[9]) & v; s[9] ^= (~v) & w;
-		v = s[10]; w = s[11]; s[10] ^= (~w) & s[12]; s[11] ^= (~s[12]) & s[13]; s[12] ^= (~s[13]) & s[14]; s[13] ^= (~s[14]) & v; s[14] ^= (~v) & w;
-		v = s[15]; w = s[16]; s[15] ^= (~w) & s[17]; s[16] ^= (~s[17]) & s[18]; s[17] ^= (~s[18]) & s[19]; s[18] ^= (~s[19]) & v; s[19] ^= (~v) & w;
-		v = s[20]; w = s[21]; s[20] ^= (~w) & s[22]; s[21] ^= (~s[22]) & s[23]; s[22] ^= (~s[23]) & s[24]; s[23] ^= (~s[24]) & v; s[24] ^= (~v) & w;
-
-		/* iota: a[0,0] ^= round constant */
-		s[0] ^= vectorize(keccak_round_constants[i]);
+		Ebi ^= Di;
+		BCa = ROL2(Ebi, 62);
+		Ego ^= Do;
+		BCe = ROL2(Ego, 55);
+		Eku ^= Du;
+		BCi = ROL2(Eku, 39);
+		Ema ^= Da;
+		BCo = ROL2(Ema, 41);
+		Ese ^= De;
+		BCu = ROL2(Ese, 2);
+		Asa = BCa ^ ((~BCe)&  BCi);
+		Ase = BCe ^ ((~BCi)&  BCo);
+		Asi = BCi ^ ((~BCo)&  BCu);
+		Aso = BCo ^ ((~BCu)&  BCa);
+		Asu = BCu ^ ((~BCa)&  BCe);
 	}
 
+
+
+	state[0] = devectorize(Aba);
+	state[1] = devectorize(Abe);
+	state[2] = devectorize(Abi);
+	state[3] = devectorize(Abo);
+	state[4] = devectorize(Abu);
+	state[5] = devectorize(Aga);
+	state[6] = devectorize(Age);
+	state[7] = devectorize(Agi);
+	state[8] = devectorize(Ago);
+	state[9] = devectorize(Agu);
+	state[10] = devectorize(Aka);
+	state[11] = devectorize(Ake);
+	state[12] = devectorize(Aki);
+	state[13] = devectorize(Ako);
+	state[14] = devectorize(Aku);
+	state[15] = devectorize(Ama);
+	state[16] = devectorize(Ame);
+	state[17] = devectorize(Ami);
+	state[18] = devectorize(Amo);
+	state[19] = devectorize(Amu);
+	state[20] = devectorize(Asa);
+	state[21] = devectorize(Ase);
+	state[22] = devectorize(Asi);
+	state[23] = devectorize(Aso);
+	state[24] = devectorize(Asu);
+
+
+	//	if (thread == 0) {for (int i=0;i<25;i++) {printf("i%d uint2 %08x %08x\n",i, LOWORD(state[i]), HIWORD(state[i])); }}
 }
 
 
-__global__ __launch_bounds__(256,3) void  sk1024_keccak_gpu_hash(int threads, uint64_t startNonce, uint2 *g_hash, uint64_t *resNounce)
+__global__ __launch_bounds__(128,4) void  sk1024_keccak_gpu_hash(int threads, uint64_t startNonce, uint64_t *g_hash, uint64_t *g_nonceVector, uint64_t *resNounce)
 {
 
     int thread = (blockDim.x * blockIdx.x + threadIdx.x);
-//    if (thread < threads)
-//    {
+    if (thread < threads)
+    {
         
 		uint64_t nonce = startNonce + thread;
 
-         uint2 state[25];
-		 uint2 hash[15];
-         uint64_t comp;
-         
+         uint64_t state[25];
+        
        #pragma unroll 9
-	   for (int i = 0; i<9; i++) {state[i]=g_hash[i * 2 * threads + thread];}
-       #pragma unroll 16
-	   for (int i = 9; i<25; i++) { state[i] = make_uint2(0,0); }
-	   keccak_block(state,RC);
+	   for (int i = 0; i<9; i++) {state[i]=g_hash[i*threads+thread];}
+	   #pragma unroll 16
+	   for (int i = 9; i<25; i++) { state[i] = 0;}
+       keccak_1600(state, RC);
        #pragma unroll 7
-	   for (int i = 0; i<7; i++) { state[i] ^= g_hash[(9+i) * 2 * threads + thread]; }
-	   state[7].x ^= 0x05;
-	   state[8].y ^= 0x80000000; // vectorize(1ULL << 63);
-	   keccak_block(state, RC);
-	   keccak_blocklast(state, RC,comp);
-	   if (comp <= pTarget[15]) { resNounce[0] = nonce; }
+	   for (int i = 0; i<7; i++) { state[i] ^= g_hash[(9+i) * threads + thread]; }
+	   state[7] ^= 0x05;
+	   state[8] ^= (1ULL << 63);
+	   keccak_1600(state, RC);
+	   keccak_1600(state, RC);
 
-//	} //thread
-}
+	   if (state[6] <= pTarget[15]) { resNounce[0] = nonce; }
 
-__global__ __launch_bounds__(256, 3) void  sk1024_keccak_gpu_hash50(int threads, uint64_t startNonce, uint2 *g_hash,  uint64_t *resNounce)
-{
-	int thread = (blockDim.x * blockIdx.x + threadIdx.x);
-//	if (thread < threads)
-//	{
-
-		uint64_t nonce = startNonce + thread;
-
-		uint2 state[25];
-		uint2 hash[15];
-		uint64_t comp;
-		
-#pragma unroll 9
-		for (int i = 0; i<9; i++) { state[i] = g_hash[i * 2 * threads + thread]; }
-#pragma unroll 16
-		for (int i = 9; i<25; i++) { state[i] = make_uint2(0, 0); }
-		keccak_block(state, RC);
-#pragma unroll 7
-		for (int i = 0; i<7; i++) { state[i] ^= g_hash[(9+i) * 2 * threads + thread]; }
-		state[7].x ^= 0x05;
-		state[8].y ^= 0x80000000; // vectorize(1ULL << 63);
-		
-		keccak_block(state, RC);
-		keccak_blocklast(state, RC,comp);
-		if (comp <= pTarget[15]) { resNounce[0] = nonce; }
-//	} //thread
-
+	} //thread
 }
 
 
@@ -423,26 +333,27 @@ __global__ __launch_bounds__(256, 3) void  sk1024_keccak_gpu_hash50(int threads,
 void sk1024_keccak_cpu_init(int thr_id, int threads)
 {
     	
+	cudaMemcpyToSymbol(RC,cpu_RC,sizeof(cpu_RC),0,cudaMemcpyHostToDevice);	
 	cudaMalloc(&d_SKNonce[thr_id], sizeof(uint64_t));
-	
+	cudaMallocHost(&d_sknounce[thr_id], 1 * sizeof(uint64_t));
 } 
 
 
-__host__ uint64_t sk1024_keccak_cpu_hash(int thr_id, int threads, uint64_t startNounce, uint2 *d_hash, int order)
+__host__ uint64_t sk1024_keccak_cpu_hash(int thr_id, int threads, uint64_t startNounce, uint64_t *d_nonceVector, uint64_t *d_hash, int order)
 {
-	uint64_t result = 0;
-    cudaMemset(d_SKNonce[thr_id], 0, sizeof(uint64_t));
-	int threadsperblock = 256;
-	
+	uint64_t result = 0xffffffffffffffff;
+	cudaMemset(d_SKNonce[thr_id], 0xff, sizeof(uint64_t));
+	int threadsperblock = 128;
+
 	dim3 grid((threads + threadsperblock - 1) / threadsperblock);
 	dim3 block(threadsperblock);
 
+	size_t shared_size = 0;
+
+		sk1024_keccak_gpu_hash << <grid, block, shared_size >> >(threads, startNounce, d_hash, d_nonceVector, d_SKNonce[thr_id]);
+	cudaMemcpy(d_sknounce[thr_id], d_SKNonce[thr_id], sizeof(uint64_t), cudaMemcpyDeviceToHost);
 	
-		sk1024_keccak_gpu_hash50 << <grid, block >> >(threads, startNounce, d_hash,  d_SKNonce[thr_id]);
-	
-	cudaMemcpy(&result, d_SKNonce[thr_id], sizeof(uint64_t), cudaMemcpyDeviceToHost);
-	//cudaThreadSynchronize();
-//	MyStreamSynchronize(NULL, order, thr_id);
+	result = *d_sknounce[thr_id];
 	return result;
 }
 __host__ void sk1024_set_Target(const void *ptarget)

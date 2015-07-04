@@ -4,13 +4,8 @@
 
 #include <stdio.h>
 #include <memory.h>
-//#include <stdint.h>
+#include <stdint.h>
 
-
-typedef unsigned char uint8_t;
-typedef unsigned short uint16_t;
-typedef unsigned int uint32_t;
-typedef unsigned long long uint64_t;
 
 #define SPH_C64(x)    ((uint64_t)(x ## ULL))
 #include "cuda_helper.h"
@@ -20,16 +15,18 @@ extern int device_minor[8];
 
 // aus cpu-miner.c
 extern int device_map[8];
-// aus heavy.cu
-
 
 #define ROL64(x, n)        (((x) << (n)) | ((x) >> (64 - (n))))
 
-
-static __constant__ uint2 uMessage[10];
+//static __constant__ uint64_t Message[27]; 
+static __constant__ uint2 uMessage[27];
 static __constant__ uint2 c_hv[17]; 
-static __constant__ uint2 skein_ks_parity = {0x55555555,0x55555555};
+//static __constant__ uint2 c_t12[9];
 
+
+
+static __constant__ uint2 skein_ks_parity = {0x55555555,0x55555555};
+static __constant__ uint2 gpu_skein_constant[16];
 static __constant__ int ROT1024[8][8];
 static __constant__ uint2 t12[9] = 
 { {0x80, 0}, 
@@ -44,6 +41,27 @@ static __constant__ uint2 t12[9] =
 };
 
 
+
+static const uint2 SKEIN1024_IV_1024[16] =
+{
+//     lo           hi
+	{0x62092156,0x5A4352BE },
+    {0x72F001CA,0x5F6E8B1A },
+	{0xA1A2CE26,0xFFCBFE9C },
+	{0x67038BCA,0x6C23C396 },
+	{0xCE34EB6C,0x583A8BFC },
+	{0xD4A46A3E,0x3FDBFB11 },
+	{0xA8300998,0x3304ACFC },
+	{0xA17F0FD2,0xB2F6675F },
+	{0x0EF7AB6B,0x9D259973 },
+	{0x3DFEA9E4,0x0914A20D },
+	{0xA494DBD3,0xCC1A9CAF },
+	{0xA0A6388C,0x9828030D },
+	{0xAADEE3DC,0x0D339D5D },
+	{0xC4E2A086,0xFC46DE35 },
+	{0x2E19A6D1,0x53D6E4F5 },
+	{0x715D1DDD,0x5663952F }
+};
 static const uint64_t cpu_SKEIN1024_IV_1024[16] =
 {
 	//     lo           hi
@@ -76,7 +94,6 @@ static const int cpu_ROT1024[8][8] =
 	{ 47, 49, 27, 58, 37, 48, 53, 56 }
 };
 //
-/*
 static __forceinline__ __device__ void Round1024(uint2 &p0, uint2 &p1, uint2 &p2, uint2 &p3, uint2 &p4, uint2 &p5, uint2 &p6, uint2 &p7, 
                                                  uint2 &p8, uint2 &p9, uint2 &pA, uint2 &pB, uint2 &pC, uint2 &pD, uint2 &pE, uint2 &pF, int ROT)
 {
@@ -104,63 +121,6 @@ pD ^= pC;
 pE += pF; 
 pF = ROL2(pF, ROT1024[ROT][7]); 
 pF ^= pE;
-}
-
-static __forceinline__ __device__ void Round1024_v2(uint2 &p0, uint2 &p1, uint2 &p2, uint2 &p3, uint2 &p4, uint2 &p5, uint2 &p6, uint2 &p7,
-	uint2 &p8, uint2 &p9, uint2 &pA, uint2 &pB, uint2 &pC, uint2 &pD, uint2 &pE, uint2 &pF, int ROT)
-{
-	p0 += p1;
-    p2 += p3;
-	p4 += p5;
-	p6 += p7;
-	p8 += p9;
-	pA += pB;
-	pC += pD;
-	pE += pF;
-	p1 = ROL2(p1, ROT1024[ROT][0]);	
-	p3 = ROL2(p3, ROT1024[ROT][1]);
-	p5 = ROL2(p5, ROT1024[ROT][2]);
-	p7 = ROL2(p7, ROT1024[ROT][3]);
-	p9 = ROL2(p9, ROT1024[ROT][4]);
-	pB = ROL2(pB, ROT1024[ROT][5]);
-	pD = ROL2(pD, ROT1024[ROT][6]);
-	pF = ROL2(pF, ROT1024[ROT][7]);
-	p1 ^= p0;
-	p3 ^= p2;
-	p5 ^= p4;
-	p7 ^= p6;
-	p9 ^= p8;
-	pB ^= pA;
-	pD ^= pC;
-	pF ^= pE;
-}
-*/
-#define Round1024(p0, p1, p2, p3, p4, p5, p6,p7,p8, p9, pA, pB, pC, pD, pE, pF, ROT) \
-{ \
-	p0 += p1; \
-	p2 += p3; \
-	p4 += p5; \
-	p6 += p7; \
-	p8 += p9; \
-	pA += pB; \
-	pC += pD; \
-	pE += pF; \
-	p1 = ROL2(p1, ROT1024[ROT][0]); \
-	p3 = ROL2(p3, ROT1024[ROT][1]); \
-	p5 = ROL2(p5, ROT1024[ROT][2]); \
-	p7 = ROL2(p7, ROT1024[ROT][3]); \
-	p9 = ROL2(p9, ROT1024[ROT][4]); \
-	pB = ROL2(pB, ROT1024[ROT][5]); \
-	pD = ROL2(pD, ROT1024[ROT][6]); \
-	pF = ROL2(pF, ROT1024[ROT][7]); \
-	p1 ^= p0; \
-	p3 ^= p2; \
-	p5 ^= p4; \
-	p7 ^= p6; \
-	p9 ^= p8; \
-	pB ^= pA; \
-	pD ^= pC; \
-	pF ^= pE; \
 }
 
 
@@ -193,15 +153,16 @@ static __forceinline__ __host__ void Round1024_host(uint64_t &p0, uint64_t &p1, 
 	pF ^= pE;
 }
 
-//original 256,2
-__global__  __launch_bounds__(256, 3) void  skein1024_gpu_hash_35(int threads, uint64_t startNonce, uint2 *outputHash)
-{
-    
 
+
+
+
+__global__  __launch_bounds__(256, 2) void  skein1024_gpu_hash_35(int threads, uint64_t startNonce, uint64_t *outputHash)
+{
 
 	int thread = (blockDim.x * blockIdx.x + threadIdx.x);
-//	if (thread < threads)
-//	{
+	if (thread < threads)
+	{
 		// Skein
 		uint2 h[17];
 		
@@ -209,16 +170,16 @@ __global__  __launch_bounds__(256, 3) void  skein1024_gpu_hash_35(int threads, u
 		uint2 p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13,p14, p15;
 		uint64_t nonce = startNonce + (uint64_t)thread;
 
-		p0 = uMessage[0];    
-		p1 = uMessage[1];
-		p2 = uMessage[2];
-		p3 = uMessage[3];
-		p4 = uMessage[4];
-		p5 = uMessage[5];
-		p6 = uMessage[6];
-		p7 = uMessage[7];
-		p8 = uMessage[8];    
-		p9 = uMessage[9];    
+		p0 = uMessage[16];    
+		p1 = uMessage[17];
+		p2 = uMessage[18];
+		p3 = uMessage[19];
+		p4 = uMessage[20];
+		p5 = uMessage[21];
+		p6 = uMessage[22];
+		p7 = uMessage[23];
+		p8 = uMessage[24];    
+		p9 = uMessage[25];    
 		p10 = vectorize(nonce); 
 				
 		uint2 tempnonce = p10;
@@ -226,73 +187,95 @@ __global__  __launch_bounds__(256, 3) void  skein1024_gpu_hash_35(int threads, u
 		t[1] = t12[4]; // etype
 		t[2] = t12[5];
 		
-		p0  += c_hv[0];
-		p1  += c_hv[1];
-		p2  += c_hv[2];
-		p3  += c_hv[3];
-		p4  += c_hv[4];
-		p5  += c_hv[5];
-		p6  += c_hv[6];
-		p7  += c_hv[7];
-		p8  += c_hv[8];
-		p9  += c_hv[9];
+		p0 += c_hv[0];
+		p1 += c_hv[1];
+		p2 += c_hv[2];
+		p3 += c_hv[3];
+		p4 += c_hv[4];
+		p5 += c_hv[5];
+		p6 += c_hv[6];
+		p7 += c_hv[7];
+		p8 += c_hv[8];
+		p9 += c_hv[9];
 		p10 += c_hv[10];
-		p11  = c_hv[11];
-		p12  = c_hv[12];
-		p13  = c_hv[13] +t[0];
-		p14  = c_hv[14] +t[1];
-		p15  = c_hv[15];
-#pragma unroll
-		for (int i = 1; i < 21; i++)
+		p11 = c_hv[11];
+		p12 = c_hv[12];
+		p13 = c_hv[13] +t[0];
+		p14 = c_hv[14] +t[1];
+		p15 = c_hv[15];
+
+        #pragma unroll
+		for (int i = 1; i < 21; i += 2)
 		{
-			uint32_t truc = 4 * ((i-1)&1);
-			Round1024(p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13, p14, p15, 0+truc);
-			Round1024(p0, p9, p2, p13, p6, p11, p4, p15, p10, p7, p12, p3, p14, p5, p8, p1, 1+truc);
-			Round1024(p0, p7, p2, p5, p4, p3, p6, p1, p12, p15, p14, p13, p8, p11, p10, p9, 2+truc);
-			Round1024(p0, p15, p2, p11, p6, p13, p4, p9, p14, p1, p8, p5, p10, p3, p12, p7, 3+truc);
+			Round1024(p0, p1, p2, p3, p4, p5, p6, p7,p8, p9, p10, p11, p12, p13, p14, p15, 0);			
+			Round1024(p0, p9, p2, p13, p6, p11, p4, p15,p10, p7, p12, p3, p14, p5, p8, p1, 1);
+			Round1024(p0, p7, p2, p5, p4, p3, p6, p1,p12, p15, p14, p13, p8, p11, p10, p9, 2);
+			Round1024(p0, p15, p2, p11, p6, p13, p4, p9,p14, p1, p8, p5, p10, p3, p12, p7, 3);
 
-			p0  += c_hv[(i + 0) % 17];
-			p1  += c_hv[(i + 1) % 17];
-			p2  += c_hv[(i + 2) % 17];
-			p3  += c_hv[(i + 3) % 17];
-			p4  += c_hv[(i + 4) % 17];
-			p5  += c_hv[(i + 5) % 17];
-			p6  += c_hv[(i + 6) % 17];
-			p7  += c_hv[(i + 7) % 17];
-			p8  += c_hv[(i + 8) % 17];
-			p9  += c_hv[(i + 9) % 17];
-			p10 += c_hv[(i + 10) % 17];
-			p11 += c_hv[(i + 11) % 17];
-			p12 += c_hv[(i + 12) % 17];
-			p13 += c_hv[(i + 13) % 17] + t[(i + 0) % 3];
-			p14 += c_hv[(i + 14) % 17] + t[(i + 1) % 3];
-			p15 += c_hv[(i + 15) % 17] + make_uint2(i, 0);			
-}
+     			p0 += c_hv[(i + 0) % 17];
+				p1 += c_hv[(i + 1) % 17];
+				p2 += c_hv[(i + 2) % 17];
+				p3 += c_hv[(i + 3) % 17];
+				p4 += c_hv[(i + 4) % 17];
+				p5 += c_hv[(i + 5) % 17];
+				p6 += c_hv[(i + 6) % 17];
+				p7 += c_hv[(i + 7) % 17];
+				p8 += c_hv[(i + 8) % 17];
+				p9 += c_hv[(i + 9) % 17];
+			    p10 += c_hv[(i + 10) % 17];
+				p11 += c_hv[(i + 11) % 17];
+				p12 += c_hv[(i + 12) % 17];
+				p13 += c_hv[(i + 13) % 17] + t[(i+0)%3];
+				p14 += c_hv[(i + 14) % 17] + t[(i+1)%3];
+				p15 += c_hv[(i + 15) % 17] + make_uint2(i, 0);
+				
 
+				Round1024(p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13, p14, p15, 4);
+				Round1024(p0, p9, p2, p13, p6, p11, p4, p15, p10, p7, p12, p3, p14, p5, p8, p1, 5);
+				Round1024(p0, p7, p2, p5, p4, p3, p6, p1, p12, p15, p14, p13, p8, p11, p10, p9, 6);
+				Round1024(p0, p15, p2, p11, p6, p13, p4, p9, p14, p1, p8, p5, p10, p3, p12, p7, 7);
 
-		p0  ^= uMessage[0];
-		p1  ^= uMessage[1];
-		p2  ^= uMessage[2];
-		p3  ^= uMessage[3];
-		p4  ^= uMessage[4];
-		p5  ^= uMessage[5];
-		p6  ^= uMessage[6];
-		p7  ^= uMessage[7];
-		p8  ^= uMessage[8];
-		p9  ^= uMessage[9];
+				p0 += c_hv[(i + 1) % 17];
+				p1 += c_hv[(i + 2) % 17];
+				p2 += c_hv[(i + 3) % 17];
+				p3 += c_hv[(i + 4) % 17];
+				p4 += c_hv[(i + 5) % 17];
+				p5 += c_hv[(i + 6) % 17];
+				p6 += c_hv[(i + 7) % 17];
+				p7 += c_hv[(i + 8) % 17];
+				p8 += c_hv[(i + 9) % 17];
+				p9 += c_hv[(i + 10) % 17];
+				p10 += c_hv[(i + 11) % 17];
+				p11 += c_hv[(i + 12) % 17];
+				p12 += c_hv[(i + 13) % 17];
+				p13 += c_hv[(i + 14) % 17] + t[(i + 1) % 3];
+				p14 += c_hv[(i + 15) % 17] + t[(i + 2) % 3];
+				p15 += c_hv[(i + 16) % 17] + make_uint2(i + 1, 0);
+                }
+
+		p0 ^= uMessage[16];
+		p1 ^= uMessage[17];
+		p2 ^= uMessage[18];
+		p3 ^= uMessage[19];
+		p4 ^= uMessage[20];
+		p5 ^= uMessage[21];
+		p6 ^= uMessage[22];
+		p7 ^= uMessage[23];
+		p8 ^= uMessage[24];
+		p9 ^= uMessage[25];
 		p10 ^= tempnonce;
 
 ////////////////////////////// round 3 /////////////////////////////////////
-		h[0]  = p0;
-		h[1]  = p1;
-		h[2]  = p2;
-		h[3]  = p3;
-		h[4]  = p4;
-		h[5]  = p5;
-		h[6]  = p6;
-		h[7]  = p7;
-		h[8]  = p8;
-		h[9]  = p9;
+		h[0] = p0;
+		h[1] = p1;
+		h[2] = p2;
+		h[3] = p3;
+		h[4] = p4;
+		h[5] = p5;
+		h[6] = p6;
+		h[7] = p7;
+		h[8] = p8;
+		h[9] = p9;
 		h[10] = p10;
 		h[11] = p11;
 		h[12] = p12;
@@ -309,74 +292,94 @@ __global__  __launch_bounds__(256, 3) void  skein1024_gpu_hash_35(int threads, u
 
 		p13 += t[0];  //p13 already equal h[13] 
 		p14 += t[1];
-      #pragma unroll
-		for (int i = 1; i < 21; i++)
-		{
-			uint32_t truc = 4 * ((i - 1) & 1);
-			Round1024(p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13, p14, p15, 0+truc);
-			Round1024(p0, p9, p2, p13, p6, p11, p4, p15, p10, p7, p12, p3, p14, p5, p8, p1, 1+truc);
-			Round1024(p0, p7, p2, p5, p4, p3, p6, p1, p12, p15, p14, p13, p8, p11, p10, p9, 2+truc);
-			Round1024(p0, p15, p2, p11, p6, p13, p4, p9, p14, p1, p8, p5, p10, p3, p12, p7, 3+truc);
 
-			p0  += h[(i + 0) % 17];
-			p1  += h[(i + 1) % 17];
-			p2  += h[(i + 2) % 17];
-			p3  += h[(i + 3) % 17];
-			p4  += h[(i + 4) % 17];
-			p5  += h[(i + 5) % 17];
-			p6  += h[(i + 6) % 17];
-			p7  += h[(i + 7) % 17];
-			p8  += h[(i + 8) % 17];
-			p9  += h[(i + 9) % 17];
+        #pragma unroll
+		for (int i = 1; i < 21; i += 2)
+		{
+			Round1024(p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13, p14, p15, 0);
+			Round1024(p0, p9, p2, p13, p6, p11, p4, p15, p10, p7, p12, p3, p14, p5, p8, p1, 1);
+			Round1024(p0, p7, p2, p5, p4, p3, p6, p1, p12, p15, p14, p13, p8, p11, p10, p9, 2);
+			Round1024(p0, p15, p2, p11, p6, p13, p4, p9, p14, p1, p8, p5, p10, p3, p12, p7, 3);
+
+			p0 += h[(i + 0) % 17];
+			p1 += h[(i + 1) % 17];
+			p2 += h[(i + 2) % 17];
+			p3 += h[(i + 3) % 17];
+			p4 += h[(i + 4) % 17];
+			p5 += h[(i + 5) % 17];
+			p6 += h[(i + 6) % 17];
+			p7 += h[(i + 7) % 17];
+			p8 += h[(i + 8) % 17];
+			p9 += h[(i + 9) % 17];
 			p10 += h[(i + 10) % 17];
 			p11 += h[(i + 11) % 17];
 			p12 += h[(i + 12) % 17];
 			p13 += h[(i + 13) % 17] + t[(i + 0) % 3];
 			p14 += h[(i + 14) % 17] + t[(i + 1) % 3];
-			p15 += h[(i + 15) % 17] + make_uint2(i, 0);			
+			p15 += h[(i + 15) % 17] + make_uint2(i,0);
+
+			Round1024(p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13, p14, p15, 4);
+			Round1024(p0, p9, p2, p13, p6, p11, p4, p15, p10, p7, p12, p3, p14, p5, p8, p1, 5);
+			Round1024(p0, p7, p2, p5, p4, p3, p6, p1, p12, p15, p14, p13, p8, p11, p10, p9, 6);
+			Round1024(p0, p15, p2, p11, p6, p13, p4, p9, p14, p1, p8, p5, p10, p3, p12, p7, 7);
+
+			p0 += h[(i + 1) % 17];
+			p1 += h[(i + 2) % 17];
+			p2 += h[(i + 3) % 17];
+			p3 += h[(i + 4) % 17];
+			p4 += h[(i + 5) % 17];
+			p5 += h[(i + 6) % 17];
+			p6 += h[(i + 7) % 17];
+			p7 += h[(i + 8) % 17];
+			p8 += h[(i + 9) % 17];
+			p9 += h[(i + 10) % 17];
+			p10 += h[(i + 11) % 17];
+			p11 += h[(i + 12) % 17];
+			p12 += h[(i + 13) % 17];
+			p13 += h[(i + 14) % 17] + t[(i + 1) % 3];
+			p14 += h[(i + 15) % 17] + t[(i + 2) % 3];
+			p15 += h[(i + 16) % 17] + make_uint2(i+1,0);
+
+
+		}
+
+			outputHash[               thread] = devectorize(p0);
+		    outputHash[1 *  threads + thread] = devectorize(p1);
+		    outputHash[2 *  threads + thread] = devectorize(p2);
+		    outputHash[3 *  threads + thread] = devectorize(p3); 
+            outputHash[4 *  threads + thread] = devectorize(p4);
+			outputHash[5 *  threads + thread] = devectorize(p5);
+			outputHash[6 *  threads + thread] = devectorize(p6);
+			outputHash[7 *  threads + thread] = devectorize(p7);
+			outputHash[8 *  threads + thread] = devectorize(p8);
+			outputHash[9 *  threads + thread] = devectorize(p9);
+			outputHash[10 * threads + thread] = devectorize(p10);
+			outputHash[11 * threads + thread] = devectorize(p11);
+			outputHash[12 * threads + thread] = devectorize(p12);
+			outputHash[13 * threads + thread] = devectorize(p13);
+			outputHash[14 * threads + thread] = devectorize(p14);
+			outputHash[15 * threads + thread] = devectorize(p15);
+	} // thread
+
 }
-
-			outputHash[               thread] = p0;
-		    outputHash[1 *2*  threads + thread] = p1;
-			outputHash[2 * 2 * threads + thread] = p2;
-			outputHash[3 * 2 * threads + thread] = p3;
-			outputHash[4 * 2 * threads + thread] = p4;
-			outputHash[5 * 2 * threads + thread] = p5;
-			outputHash[6 * 2 * threads + thread] = p6;
-			outputHash[7 * 2 * threads + thread] = p7;
-			outputHash[8 * 2 * threads + thread] = p8;
-			outputHash[9 * 2 * threads + thread] = p9;
-			outputHash[10 * 2 * threads + thread] = p10;
-			outputHash[11 * 2 * threads + thread] = p11;
-			outputHash[12 * 2 * threads + thread] = p12;
-			outputHash[13 * 2 * threads + thread] = p13;
-			outputHash[14 * 2 * threads + thread] = p14;
-			outputHash[15 * 2 * threads + thread] = p15;
-
-//	} // thread
-
-}
-
-
-
 
 __host__ void skein1024_cpu_init(int thr_id, int threads)
 {
-	
+	cudaMemcpyToSymbol(gpu_skein_constant,SKEIN1024_IV_1024,sizeof(SKEIN1024_IV_1024),0, cudaMemcpyHostToDevice);
 	cudaMemcpyToSymbol(ROT1024, cpu_ROT1024, sizeof(cpu_ROT1024), 0, cudaMemcpyHostToDevice);
 }
 
-__host__ void skein1024_cpu_hash(int thr_id, int threads, uint64_t startNounce, uint2 *d_outputHash, int order)
+__host__ void skein1024_cpu_hash(int thr_id, int threads, uint64_t startNounce, uint64_t *d_outputHash, int order)
 {
- 
-	int threadsperblock = 256; 
+
+	const int threadsperblock = 256; 
+
 	dim3 grid((threads + threadsperblock-1)/threadsperblock);
 	dim3 block(threadsperblock);
 
-		skein1024_gpu_hash_35 << <grid, block>> >(threads, startNounce, d_outputHash);
-
-//	MyStreamSynchronize(NULL, order, thr_id);
+	size_t shared_size = 0; 
 	
+		skein1024_gpu_hash_35 << <grid, block, shared_size >> >(threads, startNounce, d_outputHash);	
 }
 
 __host__ void skein1024_setBlock(void *pdata)
@@ -502,11 +505,9 @@ __host__ void skein1024_setBlock(void *pdata)
 	for (int i = 0; i<17; i++) { hv[i] = lohi_host(h[i]); } //will slow down things
 
 
-	uint2 cpu_Message[10];
-	for (int i = 0; i<10; i++) { cpu_Message[i] = lohi_host(alt_data[i+16]);} //might slow down things
-   
+	uint2 cpu_Message[27];
+	for (int i = 0; i<27; i++) { cpu_Message[i] = lohi_host(alt_data[i]);} //might slow down things
+
 	cudaMemcpyToSymbol( c_hv, hv, sizeof(hv), 0, cudaMemcpyHostToDevice);
 	cudaMemcpyToSymbol(uMessage, cpu_Message, sizeof(cpu_Message), 0, cudaMemcpyHostToDevice);
-	
-
 }

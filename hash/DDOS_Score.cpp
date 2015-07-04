@@ -23,7 +23,7 @@ namespace LLP
 		this->TIMER = new Timer(*score.GetTimer());
 		this->nIterator = score.GetIterator();
 
-		const std::vector<std::pair<bool,int>> otherSCORE = score.GetScores();
+		const std::vector<std::pair<bool,int> > otherSCORE = score.GetScores();
 		for(int index = 0; index < otherSCORE.size(); ++index)
 		{
 			this->SCORE.push_back(std::make_pair(otherSCORE[index].first, otherSCORE[index].second));
@@ -35,7 +35,7 @@ namespace LLP
 		this->TIMER = new Timer(*score.GetTimer());
 		this->nIterator = score.GetIterator();
 
-		const std::vector<std::pair<bool,int>> otherSCORE = score.GetScores();
+		const std::vector<std::pair<bool,int> > otherSCORE = score.GetScores();
 		for(int index = 0; index < otherSCORE.size(); ++index)
 		{
 			this->SCORE.push_back(std::make_pair(otherSCORE[index].first, otherSCORE[index].second));

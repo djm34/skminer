@@ -21,7 +21,7 @@ namespace LLP
 	{
 	private:
 
-		std::vector<std::pair<bool,int>> SCORE;
+		std::vector<std::pair<bool,int> > SCORE;
 		Timer* TIMER;
 		int nIterator;
 		
@@ -42,7 +42,7 @@ namespace LLP
 		///////////////////////////////////////////////////////////////////////////////
 		//Accessors
 		///////////////////////////////////////////////////////////////////////////////
-		const std::vector<std::pair<bool,int>>	GetScores()		const	{	return this->SCORE;		}
+		const std::vector<std::pair<bool,int> >	GetScores()		const	{	return this->SCORE;		}
 		const int								GetIterator()	const	{	return this->nIterator;	}
 		const Timer*							GetTimer()		const	{	return this->TIMER;		}
 
